@@ -1,0 +1,263 @@
+import tkinter as tk
+from tkinter import messagebox
+
+# --- Constants ---
+ROWS = 6
+COLS = 7
+CELL_SIZE = 80  # Size of each square cell in pixels
+PADDING = 5     # Padding around the circles
+RADIUS = (CELL_SIZE // 2) - PADDING
+
+# --- Colors ---
+COLOR_PLAYER_1 = "red"
+COLOR_PLAYER_2 = "yellow"
+COLOR_EMPTY = "white"
+COLOR_BOARD = "blue"
+
+class ConnectFourGUI:
+    """
+    Main class for the Tkinter Connect Four game.
+    Manages the game state, GUI, and event handling.
+    """
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Connect Four")
+        self.root.resizable(False, False) # Prevent window resizing
+
+        # --- Game State Variables ---
+        self.board = self.create_board()
+        self.current_player = 1  # Player 1 starts
+        self.game_over = False
+
+        # --- GUI Elements ---
+        
+        # Label to show whose turn it is
+        self.turn_label = tk.Label(
+            self.root, 
+            text="Player 1's Turn (Red)", 
+            font=("Arial", 16, "bold"),
+            fg=COLOR_PLAYER_1,
+            pady=10
+        )
+        self.turn_label.pack()
+
+        # Canvas widget to draw the game board
+        self.canvas = tk.Canvas(
+            self.root,
+            width=COLS * CELL_SIZE,
+            height=ROWS * CELL_SIZE,
+            bg=COLOR_BOARD  # The blue board background
+        )
+        self.canvas.pack()
+
+        # Bind the click event to the on_canvas_click method
+        self.canvas.bind("<Button-1>", self.on_canvas_click)
+
+        # Draw the initial empty board (white circles)
+        self.draw_board()
+
+    # --- 1. Game Logic Functions ---
+
+    def create_board(self):
+        """Creates and returns a 6x7 2D list, initialized to 0 (Empty)."""
+        # 0 = Empty, 1 = Player 1, 2 = Player 2
+        return [[0 for _ in range(COLS)] for _ in range(ROWS)]
+
+    def is_valid_location(self, col):
+        """Checks if a piece can be dropped in the given column."""
+        # A column is valid if its top-most cell (row 0) is still 0 (Empty)
+        return self.board[0][col] == 0
+
+    def get_next_open_row(self, col):
+        """Finds the lowest available row in a given column."""
+        # Iterate from the bottom row (ROWS-1) upwards
+        for r in range(ROWS - 1, -1, -1):
+            if self.board[r][col] == 0:
+                return r
+        return -1 # Should not happen if is_valid_location is checked
+
+    def drop_piece(self, row, col):
+        """Updates the internal 2D list (logic board) with the player's move."""
+        self.board[row][col] = self.current_player
+
+    def check_winner(self, player):
+        """
+        Checks the entire logic board for a 4-in-a-row win
+        for the specified player.
+        """
+        
+        # 1. Check Horizontal wins
+        for r in range(ROWS):
+            for c in range(COLS - 3):
+                if all(self.board[r][c + i] == player for i in range(4)):
+                    return True
+
+        # 2. Check Vertical wins
+        for c in range(COLS):
+            for r in range(ROWS - 3):
+                if all(self.board[r + i][c] == player for i in range(4)):
+                    return True
+
+        # 3. Check Down-Right Diagonal (positive slope)
+        for r in range(ROWS - 3):
+            for c in range(COLS - 3):
+                if all(self.board[r + i][c + i] == player for i in range(4)):
+                    return True
+
+        # 4. Check Up-Right Diagonal (negative slope)
+        for r in range(3, ROWS): # Start from row index 3 (4th row from top)
+            for c in range(COLS - 3):
+                if all(self.board[r - i][c + i] == player for i in range(4)):
+                    return True
+        
+        return False # No win found
+
+    def check_draw(self):
+        """Checks if the board is full (no 0s in the top row)."""
+        # If the top row is full, all columns are full.
+        return all(self.board[0][c] != 0 for c in range(COLS))
+
+    # --- 2. GUI and Event Handling Functions ---
+
+    def draw_board(self):
+        """
+        Draws the game board on the canvas.
+        This draws the blue rectangle and all the empty (white) circles.
+        """
+        self.canvas.delete("all") # Clear canvas for a full redraw (e.g., reset)
+        
+        # Draw the main blue board rectangle (though the canvas bg does this)
+        self.canvas.create_rectangle(
+            0, 0, 
+            COLS * CELL_SIZE, ROWS * CELL_SIZE, 
+            fill=COLOR_BOARD, outline=COLOR_BOARD
+        )
+        
+        # Draw all the empty (white) circles
+        for r in range(ROWS):
+            for c in range(COLS):
+                x1 = c * CELL_SIZE + PADDING
+                y1 = r * CELL_SIZE + PADDING
+                x2 = (c + 1) * CELL_SIZE - PADDING
+                y2 = (r + 1) * CELL_SIZE - PADDING
+                self.canvas.create_oval(
+                    x1, y1, x2, y2, 
+                    fill=COLOR_EMPTY, 
+                    outline="black", 
+                    width=2
+                )
+    
+    def draw_piece(self, row, col, player):
+        """
+        Draws a single player's piece (Red or Yellow) on the canvas
+        at the specified row and column.
+        """
+        x1 = col * CELL_SIZE + PADDING
+        y1 = row * CELL_SIZE + PADDING
+        x2 = (col + 1) * CELL_SIZE - PADDING
+        y2 = (row + 1) * CELL_SIZE - PADDING
+        
+        color = COLOR_PLAYER_1 if player == 1 else COLOR_PLAYER_2
+        
+        # Create the oval, which draws the new piece over the empty white one
+        self.canvas.create_oval(
+            x1, y1, x2, y2, 
+            fill=color, 
+            outline="black", 
+            width=2
+        )
+
+    def on_canvas_click(self, event):
+        """
+        Handles the mouse click event on the canvas.
+        This is the main game loop driver.
+        """
+        # Do nothing if the game is already over
+        if self.game_over:
+            return
+
+        # 1. Determine which column was clicked
+        # integer division gives the column index
+        try:
+            col = event.x // CELL_SIZE
+            if not (0 <= col < COLS): # Check if click was within horizontal bounds
+                return
+        except Exception:
+            return # Click was outside bounds
+
+        # 2. Check if the move is valid (column is not full)
+        if self.is_valid_location(col):
+            # 3. Find the lowest empty row in that column
+            row = self.get_next_open_row(col)
+            
+            # 4. Update the logic board
+            self.drop_piece(row, col)
+            
+            # 5. Update the GUI (draw the new piece)
+            self.draw_piece(row, col, self.current_player)
+
+            # 6. Check for a winner
+            if self.check_winner(self.current_player):
+                self.game_over = True
+                winner_color = "Red" if self.current_player == 1 else "Yellow"
+                self.show_game_over_message(f"Player {winner_color} wins!")
+                return # Stop the turn
+
+            # 7. Check for a draw
+            if self.check_draw():
+                self.game_over = True
+                self.show_game_over_message("It's a draw!")
+                return # Stop the turn
+            
+            # 8. If no win/draw, switch to the other player
+            self.current_player = 2 if self.current_player == 1 else 1
+            self.update_turn_label()
+        
+        else:
+            # Optional: Give feedback for a full column
+            print("Column is full. Try another.")
+
+    def update_turn_label(self):
+        """Updates the text and color of the turn label."""
+        if self.current_player == 1:
+            text = "Player 1's Turn (Red)"
+            color = COLOR_PLAYER_1
+        else:
+            text = "Player 2's Turn (Yellow)"
+            color = COLOR_PLAYER_2
+        
+        self.turn_label.config(text=text, fg=color)
+
+    def show_game_over_message(self, message):
+        """
+        Displays a message box with the game result and asks to play again.
+        """
+        # Update the label to show the final result
+        self.turn_label.config(text=message, fg="black")
+        
+        # Show a popup message box
+        play_again = messagebox.askyesno(
+            "Game Over",
+            f"{message}\n\nDo you want to play again?"
+        )
+        
+        if play_again:
+            self.reset_game()
+        else:
+            self.root.destroy() # Close the application window
+
+    def reset_game(self):
+        """Resets the game state and GUI to start a new game."""
+        self.board = self.create_board()
+        self.current_player = 1
+        self.game_over = False
+        self.update_turn_label()
+        
+        # Redraw the initial empty board
+        self.draw_board()
+
+# --- Main execution ---
+if __name__ == "__main__":
+    main_root = tk.Tk()
+    game_app = ConnectFourGUI(main_root)
+    main_root.mainloop() # Start the Tkinter event loop
